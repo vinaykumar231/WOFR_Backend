@@ -1,3 +1,5 @@
+import os
+from utils.validators import validate_email, validate_password_strength, validate_phone_number, validate_username
 from datetime import datetime, time, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,11 +10,12 @@ from auth.auth_handler import signJWT
 from core.Email_config import send_otp_email
 from db.session import get_db
 from api.v1.models.user.user_auth import OTP, User
+from sqlalchemy.exc import SQLAlchemyError
 import random
 import re
 import bcrypt
-from sqlalchemy.exc import SQLAlchemyError
 import pytz
+
 
 router = APIRouter()
 
@@ -21,17 +24,6 @@ ist_now = utc_now.astimezone(pytz.timezone('Asia/Kolkata'))
 
 def generate_otp():
     return str(random.randint(1000, 9999))
-
-def validate_email(email):
-        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-        return re.match(email_pattern, email)
-    
-def validate_password(password):
-        return len(password) >= 8
-    
-def validate_phone_number(phone_number):
-        phone_pattern = r"^\d{10}$"
-        return re.match(phone_pattern, phone_number)
 
    
 @router.post("auth/v1/pre-register/email_verify", response_model=None)
@@ -80,13 +72,17 @@ async def verify_otp(data:OTPVerify, db: Session = Depends(get_db)):
         otp_entry = db.query(OTP).filter(OTP.email == data.email).order_by(OTP.generated_at.desc()).first()
 
         if not otp_entry:
-            raise HTTPException(status_code=404, detail="OTP not found")
+            raise HTTPException(status_code=404, detail="Email does not exits")
         
         if otp_entry.purpose != "register":
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
         if otp_entry.expired_at < datetime.utcnow():
             raise HTTPException(status_code=400, detail="OTP has expired")
+        
+        max_attempts = int(os.getenv("PRE_REGISTER_MAX_OTP_ATTEMPT_COUNT", 3))
+        if (otp_entry.attempt_count or 0) >= max_attempts:
+            raise HTTPException(status_code=400, detail="You have attempted OTP verification too many times. Please try again later.")
 
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
@@ -101,12 +97,12 @@ async def verify_otp(data:OTPVerify, db: Session = Depends(get_db)):
 
     except HTTPException as e:
         raise e
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=404, detail="Database error occurred.")
+        raise HTTPException(status_code=404, detail=f"Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again{e}")
 
    
 @router.post("/auth/v1/register", response_model=None)
@@ -115,18 +111,25 @@ def register(user: RegisterUser, db: Session = Depends(get_db)):
         otp_entry = db.query(OTP).filter(OTP.email == user.user_email, OTP.is_verified == True).first()
         if not otp_entry:
             raise HTTPException(status_code=400, detail="Please verify your email before registration.")
+        
+        username_validation = validate_username(user.user_name)
+        if not username_validation["valid"]:
+            raise HTTPException(status_code=400, detail=username_validation["message"])
 
+        email_validation = validate_email(user.user_email)
+        if not email_validation["valid"]:
+            raise HTTPException(status_code=400, detail=email_validation["message"])
+
+        phone_validation = validate_phone_number(user.phone)
+        if not phone_validation["valid"]:
+            raise HTTPException(status_code=400, detail=phone_validation["message"])
+
+        password_validation = validate_password_strength(user.user_password)
+        if not password_validation["valid"]:
+            raise HTTPException(status_code=400, detail=password_validation["message"])
+        
         if user.user_password != user.confirm_password:
             raise HTTPException(status_code=400, detail="Passwords do not match")
-
-        if not validate_email(user.user_email):
-            raise HTTPException(status_code=400, detail="Invalid email format")
-
-        if not validate_phone_number(user.phone):
-            raise HTTPException(status_code=400, detail="Phone number must be 10 digits")
-
-        if not validate_password(user.user_password):
-            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
 
         existing_user = db.query(User).filter(User.email == user.user_email).first()
         if existing_user and existing_user.is_verified:
@@ -153,9 +156,9 @@ def register(user: RegisterUser, db: Session = Depends(get_db)):
 
     except HTTPException as e:
         raise e
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=404, detail="Database error occurred.")
+        raise HTTPException(status_code=404, detail=f"Database error occurred.")
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
@@ -221,19 +224,23 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
 
         if datetime.utcnow() > otp_entry.expired_at:
             otp_entry.otp_code = None
+            otp_entry.status = "expired"
             db.commit()
             raise HTTPException(status_code=400, detail="OTP has expired")
 
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
+            if otp_entry.attempt_count >= 3:
+                otp_entry.status ="frozen"
             db.commit()
 
-            if otp_entry.attempt_count >= 3:
-                raise HTTPException(status_code=400, detail="Too many failed attempts. OTP locked.")
+            if otp_entry.status == "frozen":
+                raise HTTPException(status_code=400, detail="Too many failed attempts. please try again.")
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
 
         otp_entry.is_verified = True
+        otp_entry.status = "used"
         db.commit()
 
         token, exp = signJWT(user_db.user_id, user_db.user_type)

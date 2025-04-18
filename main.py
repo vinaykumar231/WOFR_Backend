@@ -38,4 +38,4 @@ app.include_router(google_router, tags=["google Auth"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", port=8007, reload= True, host="0.0.0.0")
+    uvicorn.run("main:app", port=8001, reload= True, host="0.0.0.0")

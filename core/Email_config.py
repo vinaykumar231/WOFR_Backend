@@ -46,7 +46,6 @@ async def send_email(subject, email_to, body):
 ############################################################################################################
 
 async def send_otp_email(user_email: str, otp_code: str):
-    # Set timezone to IST
     ist = pytz.timezone('Asia/Kolkata')
 
     # Get current UTC time, localize it, and convert to IST

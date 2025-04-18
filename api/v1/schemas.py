@@ -1,3 +1,4 @@
+import enum
 from pydantic import BaseModel, EmailStr, constr
 from typing import Optional, List
 from datetime import datetime
@@ -26,6 +27,11 @@ class LoginStatusEnum(str, Enum):
 class UserType(str, Enum):
     admin = "admin"
     user = "user"
+
+# class OTPStatusEnum(str, Enum):
+#     ACTIVE = "active"
+#     EXPIRED = "expired"
+#     FROZEN = "frozen"
 
 
 class RegisterUser(BaseModel):
