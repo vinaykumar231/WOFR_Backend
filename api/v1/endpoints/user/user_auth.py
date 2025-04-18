@@ -227,10 +227,11 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
             otp_entry.status = "expired"
             db.commit()
             raise HTTPException(status_code=400, detail="OTP has expired")
-
+        
+        max_attempts = int(os.getenv("LOGIN_MAX_OTP_ATTEMPT_COUNT", 3))
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
-            if otp_entry.attempt_count >= 3:
+            if otp_entry.attempt_count >= max_attempts:
                 otp_entry.status ="frozen"
             db.commit()
 
