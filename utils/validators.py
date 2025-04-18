@@ -31,7 +31,7 @@ def validate_email(email: str) -> Dict[str, Any]:
     if not email:
         return {"valid": False, "message": "Email cannot be empty"}
     
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|org|net|edu)$'
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(com|org|net)$'
     if not re.match(pattern, email):
         return {"valid": False, "message": "Invalid email format"}
     
