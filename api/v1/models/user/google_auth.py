@@ -12,7 +12,7 @@ class SocialAuth(Base):
     __tablename__ = "social_auth"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("user.user_id"))
+    user_id = Column(String(10), ForeignKey("user.user_id"))
     provider = Column(String(255))
     provider_user_id = Column(String(255))
     access_token =Column(String(255))

@@ -3,8 +3,15 @@ import re
 import uuid
 from typing import Optional, Dict, Any, Union, List
 import os
+from dotenv import load_dotenv
+from pathlib import Path
+from sqlalchemy.orm import Session
 
-#------------------------------------------------- validate username -------------------------------------------------
+from api.v1.models.user.user_auth import User
+
+load_dotenv()
+
+# ------------------------------------------------- validate username -------------------------------------------------
 
 USERNAME_MIN_LEN = int(os.getenv("USERNAME_MIN_LEN", 3))  
 USERNAME_MAX_LEN = int(os.getenv("USERNAME_MAX_LEN", 30))  
@@ -14,10 +21,10 @@ def validate_username(username: str) -> Dict[str, Any]:
         return {"valid": False, "message": "Username cannot be empty"}
     
     if len(username) < USERNAME_MIN_LEN:
-        return {"valid": False, "message": "Username must be at least 3 characters long."}
+        return {"valid": False, "message":f"Username must be at least {USERNAME_MIN_LEN} characters long."}
     
     if len(username) > USERNAME_MAX_LEN:
-        return {"valid": False, "message": "Username cannot exceed 30 characters."}
+        return {"valid": False, "message": f"Username cannot exceed {USERNAME_MAX_LEN} characters."}
     
     if not re.match(r'^[a-zA-Z]+$', username):
         return {"valid": False, "message": "Username must contain only alphabets."}
@@ -91,6 +98,13 @@ def validate_password_strength(password: str) -> Dict[str, Any]:
         }
     
     return {"valid": True, "message": "Password is strong."}
+ 
+#------------------------------------------------- user_id format ------------------------------------------------
+
+def generate_next_user_id(db: Session) -> str:
+    last_user = db.query(User).order_by(User.user_id.desc()).first()
+    next_id = int(last_user.user_id) + 1 if last_user else 1
+    return str(next_id).zfill(5)
 
 #------------------------------------------------- validate date format -------------------------------------------------
 
@@ -100,5 +114,6 @@ def validate_date_format(date_str: str, format_str: str = "%d-%m-%y") -> Dict[st
         return {"valid": True, "message": "Date format is valid"}
     except (ValueError, TypeError):
         return {"valid": False, "message": "Invalid date format. Please use the format dd-mm-yy"}
+
 
 

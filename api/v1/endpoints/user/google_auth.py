@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 import logging
 import json
 
+from utils.validators import generate_next_user_id
+
 load_dotenv()
 
 
@@ -97,7 +99,9 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             
         username = user_info.get("name", "GoogleUser")
         is_email_verified = user_info.get("email_verified", False)
-        google_user_id = user_info.get("sub") 
+        google_user_id = user_info.get("sub")
+
+        user_id=generate_next_user_id(db=db) 
        
         existing_user = db.query(User).filter(User.email == email).first()
 
@@ -108,6 +112,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
            
             logger.info(f"Creating new user from Google OAuth: {email}")
             new_user = User(
+                user_id=user_id,
                 username=username,
                 email=email,
                 phone_number="0000000000",  

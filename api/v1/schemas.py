@@ -38,18 +38,29 @@ class RegisterUser(BaseModel):
     user_name: str
     user_email: EmailStr
     phone: str
+    organization_name:str
     user_password: str
     confirm_password: str
     user_type: UserType = UserType.user
     status: StatusEnum
 
+class UpdateUser(BaseModel):
+    user_name: Optional[str] = None
+    user_email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    organization_name: Optional[str] = None
+    user_password: Optional[str] = None
+    confirm_password: Optional[str] = None
+    user_type: Optional[UserType] = UserType.user
+    status: Optional[StatusEnum] = None
+
 class LoginUser(BaseModel):
-    email: EmailStr
+    email_or_phone: str
     password: str
 
 
 class OTPVerify(BaseModel):
-    email: str
+    email_or_phone: str
     otp_code: str
 
 

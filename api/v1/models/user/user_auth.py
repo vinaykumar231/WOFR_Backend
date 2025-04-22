@@ -8,10 +8,11 @@ from api.v1.schemas import StatusEnum, TenantTypeEnum,LoginTypeEnum, LoginStatus
 
 class User(Base):
     __tablename__ = 'user'
-    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(10), primary_key=True, unique=True, index=True, nullable=False)
     username = Column(String(255))
     email = Column(String(255), unique=True)
     phone_number = Column(String(255))
+    organization_name = Column(String(255))
     password_hash = Column(String(255))
     status = Column(Enum(StatusEnum))
     user_type = Column(String(255))
@@ -25,6 +26,7 @@ class OTP(Base):
     __tablename__ = 'otp'
     otp_id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), nullable=True)
+    phone_number = Column(String(255))
     purpose= Column(String(10), nullable=True)
     otp_code = Column(String(10), nullable=True)
     attempt_count = Column(Integer, nullable=True)

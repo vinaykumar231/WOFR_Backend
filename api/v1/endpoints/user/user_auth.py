@@ -1,23 +1,29 @@
-import os
-from utils.validators import validate_email, validate_password_strength, validate_phone_number, validate_username
+from dotenv import load_dotenv
+from core.phone_config import send_otp_sms
+from utils.validators import generate_next_user_id, validate_email, validate_password_strength, validate_phone_number, validate_username
 from datetime import datetime, time, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser
+from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser, UpdateUser
 from auth.auth_handler import signJWT
 from core.Email_config import send_otp_email
 from db.session import get_db
 from api.v1.models.user.user_auth import OTP, User
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, and_
 import random
 import re
+import os
 import bcrypt
 import pytz
+import phonenumbers
+
 
 
 router = APIRouter()
+load_dotenv()
 
 utc_now = pytz.utc.localize(datetime.utcnow())
 ist_now = utc_now.astimezone(pytz.timezone('Asia/Kolkata'))
@@ -26,31 +32,47 @@ def generate_otp():
     return str(random.randint(1000, 9999))
 
    
-@router.post("auth/v1/pre-register/email_verify", response_model=None)
+@router.post("/auth/v1/pre-register/email_verify", response_model=None)
 async def pre_register(email: str, db: Session = Depends(get_db)):
     try:
         existing_user = db.query(User).filter(User.email == email).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        if not validate_email(email):
-            raise HTTPException(status_code=400, detail="Invalid email format")
+        email_validation = validate_email(email)
+        if not email_validation["valid"]:
+            raise HTTPException(status_code=400, detail=email_validation["message"])
 
         otp = generate_otp()
         now = datetime.utcnow()
         expiry = now + timedelta(minutes=5)
 
-        otp_entry = OTP(
-            email=email,
-            purpose="register",  
-            otp_code=otp,
-            attempt_count=0,
-            is_verified=False,
-            generated_at=now,
-            expired_at=expiry
-        )
+        otp_entry = db.query(OTP).filter(and_(
+                OTP.email == email,
+                OTP.purpose == "register",
+                OTP.status == "active",
+                OTP.is_verified == False
+            )
+        ).order_by(OTP.generated_at.desc()).first()
 
-        db.add(otp_entry)
+        if otp_entry:
+            otp_entry.otp_code = otp
+            otp_entry.generated_at = now
+            otp_entry.expired_at = expiry
+            otp_entry.attempt_count = 0
+        else:
+            otp_entry = OTP(
+                email=email,
+                purpose="register",  
+                otp_code=otp,
+                attempt_count=0,
+                is_verified=False,
+                generated_at=now,
+                expired_at=expiry,
+                status="active"
+            )
+            db.add(otp_entry)
+
         db.commit()
 
         await send_otp_email(email, otp)
@@ -61,15 +83,19 @@ async def pre_register(email: str, db: Session = Depends(get_db)):
         raise e
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=404, detail="Database error occurred.")
+        raise HTTPException(status_code=500, detail="Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again.")
 
 @router.post("/auth/v1/pre-register/verify-otp")
 async def verify_otp(data:OTPVerify, db: Session = Depends(get_db)):
     try:
-        otp_entry = db.query(OTP).filter(OTP.email == data.email).order_by(OTP.generated_at.desc()).first()
+        email_validation = validate_email(data.email_or_phone)
+        if not email_validation["valid"]:
+            raise HTTPException(status_code=400, detail=email_validation["message"])
+        
+        otp_entry = db.query(OTP).filter(OTP.email == data.email_or_phone).order_by(OTP.generated_at.desc()).first()
 
         if not otp_entry:
             raise HTTPException(status_code=404, detail="Email does not exits")
@@ -134,13 +160,17 @@ def register(user: RegisterUser, db: Session = Depends(get_db)):
         existing_user = db.query(User).filter(User.email == user.user_email).first()
         if existing_user and existing_user.is_verified:
             raise HTTPException(status_code=400, detail="Email already registered")
+        
+        user_id=generate_next_user_id(db=db)
 
         hashed_password = bcrypt.hashpw(user.user_password.encode(), bcrypt.gensalt()).decode()
 
         new_user = User(
+            user_id=user_id,
             username=user.user_name,
             email=user.user_email,
             phone_number=user.phone,
+            organization_name=user.organization_name,
             password_hash=hashed_password,
             user_type=user.user_type,
             status=user.status,
@@ -167,7 +197,25 @@ def register(user: RegisterUser, db: Session = Depends(get_db)):
 @router.post("/auth/v1/login")
 async def login(user: LoginUser, db: Session = Depends(get_db)):
     try:
-        user_db = db.query(User).filter(User.email == user.email).first()
+        login_input = user.email_or_phone
+
+        if validate_email(login_input)["valid"]:
+            user_db = db.query(User).filter(User.email == login_input).first()
+            email_or_phone = "email"
+            otp_entry_data = {
+                "email": login_input,
+                "phone_number": None
+            }
+        elif validate_phone_number(login_input)["valid"]:
+            user_db = db.query(User).filter(User.phone_number == login_input).first()
+            email_or_phone = "phone"
+            otp_entry_data = {
+                "email": None,
+                "phone_number": login_input
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Invalid email or phone format.")
+
         if not user_db:
             raise HTTPException(status_code=404, detail="User does not exist. Please register.")
 
@@ -178,46 +226,89 @@ async def login(user: LoginUser, db: Session = Depends(get_db)):
         now = datetime.utcnow()
         expiry = now + timedelta(minutes=5)
 
-        otp_entry = OTP(
-            email=user.email,
-            purpose="login",  
-            otp_code=otp,
-            attempt_count=0,
-            is_verified=False,
-            generated_at=now,
-            expired_at=expiry
-        )
+        existing_otp = db.query(OTP).filter(
+            OTP.purpose == "login",
+            OTP.is_verified == False,
+            (
+                (OTP.email == otp_entry_data["email"]) |
+                (OTP.phone_number == otp_entry_data["phone_number"])
+            ),
+            OTP.status == "active"
+        ).order_by(OTP.generated_at.desc()).first()
 
-        db.add(otp_entry)
+        if existing_otp:
+            existing_otp.otp_code = otp
+            existing_otp.generated_at = now
+            existing_otp.expired_at = expiry
+            existing_otp.attempt_count = 0
+        else:
+            new_otp = OTP(
+                **otp_entry_data,
+                purpose="login",
+                otp_code=otp,
+                attempt_count=0,
+                is_verified=False,
+                generated_at=now,
+                expired_at=expiry,
+                status="active"
+            )
+            db.add(new_otp)
+
         db.commit()
 
-        await send_otp_email(user.email, otp)
+        if email_or_phone == "email":
+            await send_otp_email(user_db.email, otp)
+            return {"message": "OTP sent successfully to your email"}
+        else:
+            sms_sent = send_otp_sms(user_db.phone_number, otp)
+            if sms_sent:
+                return {"message": "OTP sent successfully to your phone"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to send OTP via SMS")
 
-        return {"message":"otp send successfully"}
     except HTTPException as e:
         raise e
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=404, detail="Database error occurred.")
+        raise HTTPException(status_code=500, detail="Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again. {e}")
 
 
 @router.post("/auth/v1/verify_login_otp", status_code=status.HTTP_200_OK)
 def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
     try:
-        user_db = db.query(User).filter(User.email == data.email).first()
+        login_input = data.email_or_phone
+
+        if validate_email(login_input)["valid"]:
+            user_db = db.query(User).filter(User.email == login_input).first()
+        else:
+            try:
+                parsed_phone = phonenumbers.parse(login_input, None)
+                if phonenumbers.is_valid_number(parsed_phone):
+                    user_db = db.query(User).filter(User.phone_number == login_input).first()
+                else:
+                    raise HTTPException(status_code=400, detail="Invalid phone number")
+            except:
+                raise HTTPException(status_code=400, detail="Invalid email or phone number")
+
         if not user_db:
             raise HTTPException(status_code=404, detail="User not found")
 
         otp_entry = db.query(OTP).filter(
-            OTP.email == user_db.email,
-            OTP.is_verified == False
-        ).order_by(OTP.generated_at.desc()).first()
+                or_(
+                    OTP.email == user_db.email,
+                    OTP.phone_number == user_db.phone_number
+                ),
+                OTP.is_verified == False
+            ).order_by(OTP.generated_at.desc()).first()
 
         if not otp_entry:
-            raise HTTPException(status_code=404, detail="No active OTP found")
+            raise HTTPException(status_code=404, detail="Invalid OTP.")
+
+        if otp_entry.status in ["used", "expired", "frozen"]:
+            raise HTTPException(status_code=400, detail=f"OTP is {otp_entry.status}.")
 
         if otp_entry.purpose != "login":
             raise HTTPException(status_code=400, detail="Invalid OTP")
@@ -232,13 +323,12 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
             if otp_entry.attempt_count >= max_attempts:
-                otp_entry.status ="frozen"
+                otp_entry.status = "frozen"
             db.commit()
 
             if otp_entry.status == "frozen":
-                raise HTTPException(status_code=400, detail="Too many failed attempts. please try again.")
+                raise HTTPException(status_code=400, detail="Too many failed attempts. Please try again.")
             raise HTTPException(status_code=400, detail="Invalid OTP")
-
 
         otp_entry.is_verified = True
         otp_entry.status = "used"
@@ -255,8 +345,7 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
             "is_verified": user_db.is_verified,
             "token": token,
             "expires_at": exp,
-            "created_at": user_db.created_at,    
-            
+            "created_at": user_db.created_at,
         }
 
     except HTTPException as e:
@@ -266,47 +355,154 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Unexpected error occurred. Please try again.")
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again.{e}")
     
-    
-@router.get("/v1/get_all_users", response_model=List[ALLUser])
+
+@router.get("/v1/get_all_users", response_model=None)
 def get_all_users(db: Session = Depends(get_db)):
-    users = db.query(User).all()
-    return users  
+    try:
+        users = db.query(User).all()
+        return [
+            {
+                "user_id": usr.user_id,
+                "username": usr.username,
+                "email": usr.email,
+                "phone_number": usr.phone_number,
+                "user_type": usr.user_type,
+                "is_verified": usr.is_verified,
+                "organization_name": usr.organization_name,
+                "status": usr.status,
+                "created_at": usr.created_at
+            }
+            for usr in users
+        ]
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error occurred.")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
+
+@router.put("/v1/update_user/{user_id}", response_model=None)
+def update_user(user_id: str, user: UpdateUser, db: Session = Depends(get_db)):
+    try:
+        db_user = db.query(User).filter(User.user_id == user_id).first()
+        
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.user_name:
+            db_user.username = user.user_name
+        if user.user_email:
+            db_user.email = user.user_email
+        if user.phone:
+            db_user.phone_number = user.phone
+        if user.organization_name:
+            db_user.organization_name = user.organization_name
+        if user.user_password:
+            db_user.password_hash = bcrypt.hashpw(user.user_password.encode(), bcrypt.gensalt()).decode()
+        if user.status:
+            db_user.status = user.status
+        if user.user_type:
+            db_user.user_type = user.user_type
+
+        db.commit()
+        db.refresh(db_user)
+        
+        return {"message": "user updated successfully","user":db_user }
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error occurred.")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
 
 
-# @router.get("/v1/auth/resend-otp/{email}")
-# async def resend_otp(email: str, db: Session = Depends(get_db)):
+@router.delete("/v1/delete_user/{user_id}", response_model=None)
+def delete_user(user_id: str, db: Session = Depends(get_db)):
+    try:
+        db_user = db.query(User).filter(User.user_id == user_id).first()
+
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        db.delete(db_user)
+        db.commit()
+
+        return  {"message": "user deleted successfully","user":db_user }
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error occurred.")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
+    
+
+
+
+# @router.post("/auth/v1/pre-register/phone_verify", response_model=None)
+# async def pre_register_phone(phone: str, db: Session = Depends(get_db)):
 #     try:
-#         user = db.query(User).filter(User.email == email).first()
-#         if not user:
-#             raise HTTPException(status_code=404, detail="User not found")
+#         # Check if phone number already exists
+#         existing_user = db.query(User).filter(User.phone_number == phone).first()
+#         if existing_user:
+#             raise HTTPException(status_code=400, detail="Phone number already registered")
 
-#         db.query(OTP).filter(OTP.email == user.email, OTP.is_verified == False).update({OTP.otp_code: None})
-#         db.commit()
+#         # Validate phone number (optional, implement this as needed)
+#         phone_validation = validate_phone_number(phone)
+#         if not phone_validation["valid"]:
+#             raise HTTPException(status_code=400, detail=phone_validation["message"])
 
-#         otp_code = generate_otp()
+#         # Generate OTP
+#         otp = generate_otp()
 #         now = datetime.utcnow()
+#         expiry = now + timedelta(minutes=5)
 
-#         db.add(OTP(
-#             user_id=user.user_id,
-#             otp_code=otp_code,
-#             attempt_count=0,
-#             is_verified=False,
-#             generated_at=now,
-#             expired_at=now + timedelta(minutes=5)
-#         ))
+#         # Check for existing unverified OTP for this number
+#         otp_entry = db.query(OTP).filter(and_(
+#                 OTP.email == phone,   # In this case, 'email' field is reused to store the phone
+#                 OTP.purpose == "register",
+#                 OTP.status == "active",
+#                 OTP.is_verified == False
+#             )
+#         ).order_by(OTP.generated_at.desc()).first()
+
+#         if otp_entry:
+#             otp_entry.otp_code = otp
+#             otp_entry.generated_at = now
+#             otp_entry.expired_at = expiry
+#             otp_entry.attempt_count = 0
+#         else:
+#             otp_entry = OTP(
+#                 email=phone,  # If you're storing phones in the same field
+#                 purpose="register",
+#                 otp_code=otp,
+#                 attempt_count=0,
+#                 is_verified=False,
+#                 generated_at=now,
+#                 expired_at=expiry,
+#                 status="active"
+#             )
+#             db.add(otp_entry)
+
 #         db.commit()
 
-#         await send_otp_email(email, otp_code)
+#         # Send OTP to phone number
+#         await send_otp_sms(phone, otp)
 
-#         return {"msg": "OTP resent successfully"}
+#         return {"msg": "OTP sent to your phone for verification"}
 
 #     except HTTPException as e:
 #         raise e
 #     except SQLAlchemyError:
 #         db.rollback()
-#         raise HTTPException(status_code=404, detail="Database error occurred.")
+#         raise HTTPException(status_code=500, detail="Database error occurred.")
 #     except Exception as e:
 #         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
+#         raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again.")
