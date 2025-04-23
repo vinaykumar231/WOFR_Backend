@@ -58,10 +58,18 @@ class LoginUser(BaseModel):
     email_or_phone: str
     password: str
 
+class OTPVerifyPreRegister(BaseModel):
+    email: str
+    otp_code: str
 
 class OTPVerify(BaseModel):
     email_or_phone: str
     otp_code: str
+
+class ForgotPassword(BaseModel):
+    email: str
+    new_password: str
+    confirm_password: str
 
 
 class RegisterUserResponse(BaseModel):

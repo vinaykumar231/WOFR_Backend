@@ -6,9 +6,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser, UpdateUser
+from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser, UpdateUser,ForgotPassword,OTPVerifyPreRegister
 from auth.auth_handler import signJWT
-from core.Email_config import send_otp_email
+from core.Email_config import send_email, send_otp_email
 from db.session import get_db
 from api.v1.models.user.user_auth import OTP, User
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,7 +21,6 @@ import pytz
 import phonenumbers
 
 
-
 router = APIRouter()
 load_dotenv()
 
@@ -32,16 +31,16 @@ def generate_otp():
     return str(random.randint(1000, 9999))
 
    
-@router.post("/auth/v1/pre-register/email_verify", response_model=None)
+@router.post("/auth/v1/pre-register/email-verification", status_code=status.HTTP_200_OK)
 async def pre_register(email: str, db: Session = Depends(get_db)):
     try:
         existing_user = db.query(User).filter(User.email == email).first()
         if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,  detail="Email already registered")
 
         email_validation = validate_email(email)
         if not email_validation["valid"]:
-            raise HTTPException(status_code=400, detail=email_validation["message"])
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=email_validation["message"])
 
         otp = generate_otp()
         now = datetime.utcnow()
@@ -83,37 +82,37 @@ async def pre_register(email: str, db: Session = Depends(get_db)):
         raise e
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Database error occurred.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred, please try again.")
 
-@router.post("/auth/v1/pre-register/verify-otp")
-async def verify_otp(data:OTPVerify, db: Session = Depends(get_db)):
+@router.post("/auth/v1/pre-register/verify-otp", status_code=status.HTTP_200_OK)
+async def verify_otp(data:OTPVerifyPreRegister, db: Session = Depends(get_db)):
     try:
-        email_validation = validate_email(data.email_or_phone)
+        email_validation = validate_email(data.email)
         if not email_validation["valid"]:
-            raise HTTPException(status_code=400, detail=email_validation["message"])
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=email_validation["message"])
         
-        otp_entry = db.query(OTP).filter(OTP.email == data.email_or_phone).order_by(OTP.generated_at.desc()).first()
+        otp_entry = db.query(OTP).filter(OTP.email == data.email).order_by(OTP.generated_at.desc()).first()
 
         if not otp_entry:
-            raise HTTPException(status_code=404, detail="Email does not exits")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email does not exits")
         
         if otp_entry.purpose != "register":
-            raise HTTPException(status_code=400, detail="Invalid OTP")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
 
         if otp_entry.expired_at < datetime.utcnow():
-            raise HTTPException(status_code=400, detail="OTP has expired")
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="OTP has expired")
         
         max_attempts = int(os.getenv("PRE_REGISTER_MAX_OTP_ATTEMPT_COUNT", 3))
         if (otp_entry.attempt_count or 0) >= max_attempts:
-            raise HTTPException(status_code=400, detail="You have attempted OTP verification too many times. Please try again later.")
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="You have attempted OTP verification too many times. Please try again later.")
 
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
             db.commit()
-            raise HTTPException(status_code=400, detail="Invalid OTP")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
 
         otp_entry.is_verified = True
         otp_entry.attempt_count = otp_entry.attempt_count or 0
@@ -125,10 +124,10 @@ async def verify_otp(data:OTPVerify, db: Session = Depends(get_db)):
         raise e
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=404, detail=f"Database error occurred.")
+        raise HTTPException( status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again{e}")
+        raise HTTPException( status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
 
    
 @router.post("/auth/v1/register", response_model=None)
@@ -136,7 +135,7 @@ def register(user: RegisterUser, db: Session = Depends(get_db)):
     try:
         otp_entry = db.query(OTP).filter(OTP.email == user.user_email, OTP.is_verified == True).first()
         if not otp_entry:
-            raise HTTPException(status_code=400, detail="Please verify your email before registration.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Please verify your email before registration.")
         
         username_validation = validate_username(user.user_name)
         if not username_validation["valid"]:
@@ -220,7 +219,7 @@ async def login(user: LoginUser, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="User does not exist. Please register.")
 
         if not bcrypt.checkpw(user.password.encode('utf-8'), user_db.password_hash.encode('utf-8')):
-            raise HTTPException(status_code=401, detail="Passwords do not match")
+            raise HTTPException(status_code=401, detail="Invalid Passwords")
 
         otp = generate_otp()
         now = datetime.utcnow()
@@ -273,7 +272,7 @@ async def login(user: LoginUser, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again. {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred, please try again.")
 
 
 @router.post("/auth/v1/verify_login_otp", status_code=status.HTTP_200_OK)
@@ -305,7 +304,7 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
             ).order_by(OTP.generated_at.desc()).first()
 
         if not otp_entry:
-            raise HTTPException(status_code=404, detail="Invalid OTP.")
+            raise HTTPException(status_code=400, detail=f"Invalid OTP.")
 
         if otp_entry.status in ["used", "expired", "frozen"]:
             raise HTTPException(status_code=400, detail=f"OTP is {otp_entry.status}.")
@@ -358,6 +357,72 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again.{e}")
     
 
+@router.post("/auth/v1/forgot-password/send-link")
+async def send_forgot_password_email(email: str, db: Session = Depends(get_db)):
+
+    email_validation = validate_email(email)
+    if not email_validation["valid"]:
+            raise HTTPException(status_code=400, detail=email_validation["message"])
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User with this email does not exist")
+
+    reset_link = f"https://021b-2405-201-37-21d9-5198-9ec5-664-4a64.ngrok-free.app/api/auth/v1/forgot-password"
+
+    email_body = f"""
+    <h3>Password Reset Request</h3>
+    <p>Click the link below to reset your password:</p>
+    <p><a href="{reset_link}" target="_blank">Reset Password</a></p>
+    """
+
+    try:
+        await send_email(
+            subject="Reset Your Password",
+            email_to=email,
+            body=email_body
+        )
+        return {"message": "Password reset link sent to your email."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e}")
+    
+
+@router.post("/auth/v1/forgot-password", response_model=None)
+async def reset_password(data: ForgotPassword, db: Session = Depends(get_db)):
+    try:
+        email_validation = validate_email(data.email)
+        if not email_validation["valid"]:
+            raise HTTPException(status_code=400, detail=email_validation["message"])
+            
+        user_db = db.query(User).filter(User.email == data.email).first()
+        if not user_db:
+            raise HTTPException(status_code=404, detail="User not found with this email")
+
+
+        password_validation = validate_password_strength(data.new_password)
+        if not password_validation["valid"]:
+            raise HTTPException(status_code=400, detail=password_validation["message"])
+            
+        if data.new_password != data.confirm_password:
+            raise HTTPException(status_code=400, detail="Passwords do not match")
+
+        hashed_password = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
+        user_db.password_hash = hashed_password
+        
+        db.commit()
+        
+        return {"message": "Password has been reset successfully. You can now login with your new password."}
+
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error occurred: {e}")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again: {e}")
+    
+
 @router.get("/v1/get_all_users", response_model=None)
 def get_all_users(db: Session = Depends(get_db)):
     try:
@@ -385,63 +450,63 @@ def get_all_users(db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
 
-@router.put("/v1/update_user/{user_id}", response_model=None)
-def update_user(user_id: str, user: UpdateUser, db: Session = Depends(get_db)):
-    try:
-        db_user = db.query(User).filter(User.user_id == user_id).first()
+# @router.put("/v1/update_user/{user_id}", response_model=None)
+# def update_user(user_id: str, user: UpdateUser, db: Session = Depends(get_db)):
+#     try:
+#         db_user = db.query(User).filter(User.user_id == user_id).first()
         
-        if not db_user:
-            raise HTTPException(status_code=404, detail="User not found")
+#         if not db_user:
+#             raise HTTPException(status_code=404, detail="User not found")
 
-        if user.user_name:
-            db_user.username = user.user_name
-        if user.user_email:
-            db_user.email = user.user_email
-        if user.phone:
-            db_user.phone_number = user.phone
-        if user.organization_name:
-            db_user.organization_name = user.organization_name
-        if user.user_password:
-            db_user.password_hash = bcrypt.hashpw(user.user_password.encode(), bcrypt.gensalt()).decode()
-        if user.status:
-            db_user.status = user.status
-        if user.user_type:
-            db_user.user_type = user.user_type
+#         if user.user_name:
+#             db_user.username = user.user_name
+#         if user.user_email:
+#             db_user.email = user.user_email
+#         if user.phone:
+#             db_user.phone_number = user.phone
+#         if user.organization_name:
+#             db_user.organization_name = user.organization_name
+#         if user.user_password:
+#             db_user.password_hash = bcrypt.hashpw(user.user_password.encode(), bcrypt.gensalt()).decode()
+#         if user.status:
+#             db_user.status = user.status
+#         if user.user_type:
+#             db_user.user_type = user.user_type
 
-        db.commit()
-        db.refresh(db_user)
+#         db.commit()
+#         db.refresh(db_user)
         
-        return {"message": "user updated successfully","user":db_user }
-    except HTTPException as e:
-        raise e
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database error occurred.")
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
+#         return {"message": "user updated successfully","user":db_user }
+#     except HTTPException as e:
+#         raise e
+#     except SQLAlchemyError:
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail="Database error occurred.")
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
 
 
-@router.delete("/v1/delete_user/{user_id}", response_model=None)
-def delete_user(user_id: str, db: Session = Depends(get_db)):
-    try:
-        db_user = db.query(User).filter(User.user_id == user_id).first()
+# @router.delete("/v1/delete_user/{user_id}", response_model=None)
+# def delete_user(user_id: str, db: Session = Depends(get_db)):
+#     try:
+#         db_user = db.query(User).filter(User.user_id == user_id).first()
 
-        if not db_user:
-            raise HTTPException(status_code=404, detail="User not found")
+#         if not db_user:
+#             raise HTTPException(status_code=404, detail="User not found")
 
-        db.delete(db_user)
-        db.commit()
+#         db.delete(db_user)
+#         db.commit()
 
-        return  {"message": "user deleted successfully","user":db_user }
-    except HTTPException as e:
-        raise e
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database error occurred.")
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
+#         return  {"message": "user deleted successfully","user":db_user }
+#     except HTTPException as e:
+#         raise e
+#     except SQLAlchemyError:
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail="Database error occurred.")
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail=f"Unexpected error occurred. Please try again. {e}")
     
 
 

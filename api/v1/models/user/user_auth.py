@@ -27,7 +27,7 @@ class OTP(Base):
     otp_id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), nullable=True)
     phone_number = Column(String(255))
-    purpose= Column(String(10), nullable=True)
+    purpose= Column(String(100), nullable=True)
     otp_code = Column(String(10), nullable=True)
     attempt_count = Column(Integer, nullable=True)
     is_verified = Column(Boolean, nullable=True)
