@@ -8,7 +8,7 @@ from pydantic import EmailStr, BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from dotenv import load_dotenv
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 load_dotenv()
@@ -45,34 +45,24 @@ async def send_email(subject, email_to, body):
 
 ############################################################################################################
 
-async def send_otp_email(user_email: str, otp_code: str):
-    ist = pytz.timezone('Asia/Kolkata')
+async def send_otp_email(user_email: str, otp_code: str, purpose:str):
 
-    # Get current UTC time, localize it, and convert to IST
-    utc_now = pytz.utc.localize(datetime.utcnow())
-    ist_now = utc_now.astimezone(ist)
+    utc_now = datetime.now(timezone.utc)  
+    expiry_time_utc = utc_now + timedelta(minutes=5)
+    formatted_expiry = expiry_time_utc.strftime('%d %b %Y')
 
-    # Calculate expiry time in IST
-    expiry_time_ist = ist_now + timedelta(minutes=5)
-    formatted_expiry = expiry_time_ist.strftime('%I:%M %p IST')
-
-    # Email body
     body = f"""
-    <h3>OTP Verification</h3>
-    <p>Your One-Time Password (OTP) for login is:</p>
+    <h3>OTP Verification for {purpose} process</h3>
+    <p>Your One-Time Password (OTP):</p>
     <h2 style="color: #2e6c80;">{otp_code}</h2>
-    <p>This OTP is valid until <b>{formatted_expiry}</b> (5 minutes).</p>
-    <p>If you did not request this, please ignore this message.</p>
-    <br>
-    <p>Best regards,</p>
-    <p>Vinay Kumar</p>
-    <p>MaitriAI</p>
-    <p>900417181</p>
+    <p>This OTP is valid for only 5 minutes (<b>{formatted_expiry}</b>) .</p>
+    <p style="color: #cc0000;"><strong>Do not share this OTP with anyone.</strong> It is confidential and only intended for you.</p>
+    
     """
 
     try:
         await send_email(
-            subject="Your OTP Code for Login",
+            subject=f"Your OTP Code for {purpose}",
             email_to=user_email,
             body=body
         )

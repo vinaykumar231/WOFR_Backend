@@ -18,6 +18,7 @@ class User(Base):
     user_type = Column(String(255))
     created_at = Column(DateTime, default=datetime.utcnow)
     is_verified = Column(Boolean, default=False)
+    #is_login_without_otp = Column(Boolean, default=False)
 
     social_auths = relationship("SocialAuth", back_populates="user")
 
