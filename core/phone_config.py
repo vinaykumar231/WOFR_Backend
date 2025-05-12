@@ -23,19 +23,3 @@ def send_otp_sms(phone_number: str, otp: str):
 
 
 
-# for get trail number
-# client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
-# # Step 1: List available numbers
-# available_numbers = client.available_phone_numbers("US").local.list(sms_enabled=True, limit=1)
-
-# if available_numbers:
-#     number = available_numbers[0].phone_number
-#     print("Buying trial number:", number)
-
-#     # Step 2: Buy the number (register to your account)
-#     purchased_number = client.incoming_phone_numbers.create(phone_number=number)
-#     print(f"Purchased trial number: {purchased_number.phone_number}")
-# else:
-#     print("No numbers available.")
-

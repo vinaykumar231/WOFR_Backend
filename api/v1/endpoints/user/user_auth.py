@@ -1,14 +1,16 @@
 from dotenv import load_dotenv
+from api.v1.schemas.user_schemas import ForgotPassword, LoginUser, OTPVerify, OTPVerifyPreRegister, StatusEnum, UserType
+from core.config import read_config
 from core.phone_config import send_otp_sms
 from utils.validators import generate_next_user_id, validate_email, validate_password_strength, validate_phone_number, validate_username
 from datetime import datetime, time, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status,Form
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser, StatusEnum, UpdateUser,ForgotPassword,OTPVerifyPreRegister, UserType
+#from api.v1.schemas import LoginUser, RegisterUser,OTPVerify, ALLUser, StatusEnum, UpdateUser,ForgotPassword,OTPVerifyPreRegister, UserType
 from auth.auth_handler import signJWT
-from core.Email_config import send_email, send_otp_email
+from core.email_config import send_email, send_otp_email
 from db.session import get_db
 from api.v1.models.user.user_auth import OTP, User
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,6 +25,7 @@ import phonenumbers
 
 router = APIRouter()
 load_dotenv()
+config = read_config()
 
 utc_now = pytz.utc.localize(datetime.utcnow())
 ist_now = utc_now.astimezone(pytz.timezone('Asia/Kolkata'))
@@ -80,12 +83,12 @@ async def pre_register(email: str, db: Session = Depends(get_db)):
     
     except HTTPException as e:
         raise e
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.{e}")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred, please try again.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred, please try again.{e}")
 
 @router.post("/auth/v1/pre-register/verify-otp", status_code=status.HTTP_200_OK)
 async def verify_otp(data:OTPVerifyPreRegister, db: Session = Depends(get_db)):
@@ -105,7 +108,7 @@ async def verify_otp(data:OTPVerifyPreRegister, db: Session = Depends(get_db)):
         if otp_entry.expired_at < datetime.utcnow():
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="OTP has expired")
         
-        max_attempts = int(os.getenv("PRE_REGISTER_MAX_OTP_ATTEMPT_COUNT", 3))
+        max_attempts = int(config.get("PRE_REGISTER_MAX_OTP_ATTEMPT_COUNT"))
         if (otp_entry.attempt_count or 0) >= max_attempts:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="You have attempted OTP verification too many times. Please try again later.")
 
@@ -179,8 +182,8 @@ def register(
             phone_number=phone,
             organization_name=organization_name,
             password_hash=hashed_password,
-            user_type=UserType.user,
-            status=StatusEnum.active,
+            user_type=UserType.super_admin,
+            status=StatusEnum.ACTIVE,  
             created_at=datetime.utcnow(),
             is_verified=True 
         )
@@ -194,8 +197,9 @@ def register(
     except HTTPException as e:
         raise e
     except SQLAlchemyError as e:
+        print(e)
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.{e}")
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
@@ -330,9 +334,9 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
             otp_entry.otp_code = None
             otp_entry.status = "expired"
             db.commit()
-            raise HTTPException(status_code=400, detail="OTP has expired")
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="OTP has expired")
         
-        max_attempts = int(os.getenv("LOGIN_MAX_OTP_ATTEMPT_COUNT", 3))
+        max_attempts = int(config.get("LOGIN_MAX_OTP_ATTEMPT_COUNT",3))
         if otp_entry.otp_code != data.otp_code:
             otp_entry.attempt_count = (otp_entry.attempt_count or 0) + 1
             if otp_entry.attempt_count >= max_attempts:
@@ -351,8 +355,9 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
 
         return {
             "msg": "OTP verified successfully, login successful",
-            "email": user_db.email,
             "token": token,
+            "email": user_db.email,
+            "username": user_db.username,
         }
 
     except HTTPException as e:
@@ -376,7 +381,7 @@ async def send_forgot_password_email(email: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User with this email does not exist")
 
-    reset_link = f"https://021b-2405-201-37-21d9-5198-9ec5-664-4a64.ngrok-free.app/api/auth/v1/forgot-password"
+    reset_link = f"http://192.168.29.219:8000/reset-password?email={email}"
 
     email_body = f"""
     <h3>Password Reset Request</h3>
@@ -459,6 +464,8 @@ def get_all_users(db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=f"Unexpected error occurred. Please try again.")
 
+
+    
 # @router.put("/v1/update_user/{user_id}", response_model=None)
 # def update_user(user_id: str, user: UpdateUser, db: Session = Depends(get_db)):
 #     try:

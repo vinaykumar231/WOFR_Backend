@@ -4,8 +4,6 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from db.session import Base
 import enum
-from api.v1.schemas import StatusEnum, TenantTypeEnum,LoginTypeEnum, LoginStatusEnum
-
 
 
 class SocialAuth(Base):

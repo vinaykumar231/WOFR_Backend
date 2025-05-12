@@ -27,3 +27,6 @@ Thumbs.db
 .idea/          # JetBrains IDE (PyCharm)
 .vscode/        # VS Code settings
 .env
+
+# Ignore error explanation file
+error_code_explain.txt

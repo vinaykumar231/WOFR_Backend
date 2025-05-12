@@ -4,7 +4,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from db.session import Base, engine,get_db
+from api.v1.models import rbac
+from api.v1.models import tenants
+from api.v1.models import user
 from api.v1.endpoints.user import user_router, google_router
+from api.v1.endpoints.settings import setting_router
+from api.v1.endpoints.rbac import module_router
+from api.v1.endpoints.rbac import action_router
+from api.v1.endpoints.rbac import role_router
+from api.v1.endpoints.rbac import role_module_action_mapping_router
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -33,8 +41,14 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+app.include_router(setting_router, prefix="/api", tags=["Settings"])
 app.include_router(user_router, prefix="/api", tags=["User Auth"])
-app.include_router(google_router, tags=["google Auth"])
+app.include_router(google_router, tags=["Google Auth"])
+app.include_router(module_router, prefix="/api", tags=["Module management"])
+app.include_router(action_router, prefix="/api", tags=["Actions management"])
+app.include_router(role_router, prefix="/api", tags=["Roles management"])
+app.include_router(role_module_action_mapping_router, prefix="/api", tags=["Role module action mapping management"])
 
 if __name__ == "__main__":
     import uvicorn

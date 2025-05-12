@@ -27,26 +27,3 @@ def get_db():
 
 
 
-# ENVIRONMENT = os.getenv("ENVIRONMENT")  # dev / prod
-
-# DEV_DATABASE_URL = os.getenv("DEV_DATABASE_URL")
-# PROD_DATABASE_URL = os.getenv("PROD_DATABASE_URL")
-
-
-# dev_engine = create_engine(DEV_DATABASE_URL)
-# prod_engine = create_engine(PROD_DATABASE_URL)
-
-# Base = declarative_base()
-
-# def get_db(db_env: str = None):
-#     if not db_env:
-#         db_env = ENVIRONMENT  
-
-#     engine = prod_engine if db_env == "prod" else dev_engine
-#     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-#     db = SessionLocal()
-#     try:
-#         yield db
-#     finally:
-        db.close()

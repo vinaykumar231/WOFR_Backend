@@ -6,15 +6,16 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 from sqlalchemy.orm import Session
-
 from api.v1.models.user.user_auth import User
+from core.config import read_config
 
 load_dotenv()
+config = read_config()
 
 # ------------------------------------------------- validate username -------------------------------------------------
 
-USERNAME_MIN_LEN = int(os.getenv("USERNAME_MIN_LEN", 3))  
-USERNAME_MAX_LEN = int(os.getenv("USERNAME_MAX_LEN", 30))  
+USERNAME_MIN_LEN = int(config.get("USERNAME_MIN_LEN", 3))
+USERNAME_MAX_LEN = int(config.get("USERNAME_MAX_LEN", 30))  
 
 def validate_username(username: str) -> Dict[str, Any]:
     if not username:

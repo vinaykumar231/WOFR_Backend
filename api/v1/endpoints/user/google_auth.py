@@ -11,7 +11,6 @@ from auth.auth_handler import signJWT
 from dotenv import load_dotenv
 import logging
 import json
-
 from utils.validators import generate_next_user_id
 
 load_dotenv()
@@ -150,9 +149,9 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             "token": token,
             "username": user.username,
             "email": user.email,
-            "user_type": user.user_type,
-            "created_at": user.created_at,
-            "expires_at": exp,
+            #"user_type": user.user_type,
+            #"created_at": user.created_at,
+            #"expires_at": exp,
         }
     except HTTPException:
         raise
