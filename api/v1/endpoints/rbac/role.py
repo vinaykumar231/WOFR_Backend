@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, Query, Path, Body, status, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional, Literal
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 from db.session import get_db
 from api.v1.models.rbac.role import Role
-from api.v1.schemas.rbac_schemas import RoleOut, RoleUpdate, StatusUpdate, SuccessResponse, StatusEnum
+from api.v1.schemas.rbac_schemas import RoleCreate, RoleOut, RoleUpdate, StatusUpdate, SuccessResponse, StatusEnum
 from utils.helper_function import SortOrder, filter_items, paginate, sort_items
 
 router = APIRouter()
@@ -16,14 +17,19 @@ async def list_roles(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
+    role_name: Optional[str] = Query(None),
     sort_by: Literal["role_id", "role_name"] = "role_name",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db)
 ):
     try:
         query = db.query(Role)
+
         if status_filter:
             query = query.filter(Role.status == status_filter)
+
+        if role_name:
+            query = query.filter(func.lower(Role.role_name) == role_name.lower())
 
         all_roles = query.all()
         sorted_roles = sort_items(all_roles, sort_by, order)
@@ -41,9 +47,48 @@ async def list_roles(
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred")
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred please try again")
+    
+@router.post("/v1/roles", response_model=SuccessResponse, status_code=status.HTTP_201_CREATED)
+async def create_role(
+    role_create: RoleCreate = Body(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if role name already exists
+        existing_role = db.query(Role).filter(Role.role_name == role_create.role_name).first()
+        if existing_role:
+            raise HTTPException(status_code=400, detail="Role with this name already exists.")
+
+        new_role = Role(
+            role_name=role_create.role_name,
+            description=role_create.description,
+            status=role_create.status
+        )
+        db.add(new_role)
+        db.commit()
+        db.refresh(new_role)
+
+        return {
+            "success": True,
+            "data": {"role": RoleOut.from_orm(new_role)},
+            "meta": {
+                "message": "Role created successfully",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred: {str(e)}")
+
 
 
 @router.put("/v1/roles/{role_id}", response_model=SuccessResponse)

@@ -19,3 +19,4 @@ class Tenant(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
     user = relationship("User", back_populates="tenant")
+    user_role_assignment = relationship("UserRoleAssignment", back_populates="tenant")

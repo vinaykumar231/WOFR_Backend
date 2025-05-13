@@ -3,13 +3,14 @@ from sqlalchemy.orm import relationship
 from db.session import Base
 
 class RoleModuleActionMapping(Base):
-    __tablename__ = "role_module_action_mapping_tb2"
+    __tablename__ = "role_module_action_mapping_tb3"
 
-    role_module_action_mapping_id = Column(Integer, primary_key=True)
+    role_module_action_mapping_id = Column(Integer, primary_key=True,autoincrement=True)
     module_id = Column(Integer, ForeignKey("modules.module_id"))  
     action_id = Column(Integer, ForeignKey("actions.action_id"))  
     role_id = Column(Integer, ForeignKey("roles.role_id"))
     assigned_by = Column(String(10), ForeignKey("user.user_id"))
+    status = Column(String(255))
     assignment_date = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
@@ -18,3 +19,4 @@ class RoleModuleActionMapping(Base):
     module = relationship("Module", back_populates="role_module_action_mappings")
     action = relationship("Action", back_populates="role_module_action_mappings")
     user = relationship("User", back_populates="role_module_action_mappings")
+    user_role_assignment = relationship("UserRoleAssignment", back_populates="role_module_action_mappings")

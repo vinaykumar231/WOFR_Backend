@@ -411,7 +411,6 @@ async def reset_password(data: ForgotPassword, db: Session = Depends(get_db)):
         if not user_db:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found with this email")
 
-
         password_validation = validate_password_strength(data.new_password)
         if not password_validation["valid"]:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=password_validation["message"])

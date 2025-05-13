@@ -13,6 +13,8 @@ from api.v1.endpoints.rbac import module_router
 from api.v1.endpoints.rbac import action_router
 from api.v1.endpoints.rbac import role_router
 from api.v1.endpoints.rbac import role_module_action_mapping_router
+from api.v1.endpoints.rbac import user_role_assignment_router
+from api.v1.endpoints.tenants import tenant_router
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -49,6 +51,8 @@ app.include_router(module_router, prefix="/api", tags=["Module management"])
 app.include_router(action_router, prefix="/api", tags=["Actions management"])
 app.include_router(role_router, prefix="/api", tags=["Roles management"])
 app.include_router(role_module_action_mapping_router, prefix="/api", tags=["Role module action mapping management"])
+app.include_router(user_role_assignment_router, prefix="/api", tags=["User role assignment management"])
+app.include_router(tenant_router, prefix="/api", tags=["tenant management"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, ConfigDict
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from enum import Enum
 
@@ -47,6 +47,11 @@ class ActionUpdate(BaseModel):
     status: Optional[str]= None
 #--------------------------------------------- Roles -------------------------------------------------------------
 
+class RoleCreate(BaseModel):
+    role_name: str
+    description: Optional[str] = None
+    status: Optional[StatusEnum] = StatusEnum.active
+
 class RoleOut(BaseModel):
     role_id: int
     role_name: str
@@ -74,14 +79,38 @@ class SuccessResponse(BaseModel):
 
 #----------------------------------------- Role Module Action Mapping ------------------------------------
 
-class RoleModuleActionMappingCreate(BaseModel):
-    module_id: int
-    action_id: int
-    role_id: int
-    assigned_by: str  
+class RoleModuleAssignment(BaseModel):
+    role_id: List[int]                     
+    action_ids: List[int]                 
+    status: StatusEnum = StatusEnum.active
 
+class RoleModuleAssignments(BaseModel):
+    module_id: int
+    assignments: List[RoleModuleAssignment]
+    assigned_by: str
+
+class RoleModuleAssignmentUpdate(BaseModel):
+    role_id: Optional[int] = None
+    action_ids: Optional[List[int]] = None
+    assigned_by: Optional[str] = None
+    status: Optional[str] = None
+
+class RoleModuleAssignmentsUpdate(BaseModel):
+    module_id: int
+    assignments: List[RoleModuleAssignmentUpdate]
+
+class RoleModuleStatusUpdate(BaseModel):
+    mapping_ids: List[int]
+    status: StatusEnum
+    
     class Config:
         from_attributes = True
+
+class Meta(BaseModel):
+    page: int
+    limit: int
+    total_items: int
+    total_pages: int
 
 class RoleModuleActionResponse(BaseModel):
     role_module_action_mapping_id: int
@@ -90,7 +119,7 @@ class RoleModuleActionResponse(BaseModel):
     action_id: int
     action_name: Optional[str]
     role_id: int
-    role_name: Optional[str]  # New field to include role name
+    role_name: Optional[str]
     assigner_id: str
     assigner_name: Optional[str]
     assignment_date: datetime
@@ -124,23 +153,4 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: ErrorDetail
     
-class ModuleCreate(BaseModel):
-    Module_Name: str
-    Description: Optional[str]
-    Status: Optional[str] = "Active"
 
-class ActionCreate(BaseModel):
-    Action_Name: str
-    Description: Optional[str]
-    Status: Optional[str] = "Active"
-
-class RoleCreate(BaseModel):
-    Role_Name: str
-    Description: Optional[str]
-    Status: Optional[str] = "Active"
-
-class RoleMappingCreate(BaseModel):
-    Role_ID: int
-    Pair_ID: int
-    Assigned_By: int
-    Assignment_Date: Optional[datetime] = None

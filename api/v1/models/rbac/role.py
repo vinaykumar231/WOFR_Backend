@@ -15,4 +15,4 @@ class Role(Base):
 
 
     role_module_action_mappings = relationship("RoleModuleActionMapping", back_populates="role")
-    user_roles = relationship("UserRoleAssignment", back_populates="role")
+    

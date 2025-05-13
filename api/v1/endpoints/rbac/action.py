@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Body, Depends, Query, Path, HTTPException,status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional, Literal
 from api.v1.models.rbac.action import Action
@@ -15,14 +16,19 @@ async def list_actions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
+    action_name: Optional[str] = Query(None),
     sort_by: Literal["action_id", "action_name"] = "action_name",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db),
 ):
     try:
         query = db.query(Action)
+
         if status_filter:
             query = query.filter(Action.status == status_filter)
+
+        if action_name:
+            query = query.filter(func.lower(Action.action_name) == action_name.lower())
 
         all_actions = query.all()
         sorted_actions = sort_items(all_actions, sort_by, order)
@@ -35,15 +41,16 @@ async def list_actions(
             "data": {"actions": paginated["items"]},
             "meta": paginated["meta"]
         }
+
     except HTTPException as e:
         raise e
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
-
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred please try again.")
+    
 @router.put("/v1/actions/{action_id}", response_model=SuccessResponse)
 async def update_action(
     action_id: int = Path(..., ge=1),

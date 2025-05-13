@@ -4,6 +4,7 @@ from typing import Literal, Optional
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Query,status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from api.v1.schemas.rbac_schemas import ModuleOut, ModuleUpdate, StatusUpdate, SuccessResponse, StatusEnum
 from api.v1.models.rbac.module import Module
@@ -21,14 +22,20 @@ async def list_modules(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
+    module_name: Optional[str] = Query(None),
     sort_by: Literal["module_id", "module_name"] = "module_name",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db)
 ):
     try:
         query = db.query(Module)
+
         if status_filter:
             query = query.filter(Module.status == status_filter)
+
+        if module_name:
+            # Case-insensitive match using lower() from both sides
+            query = query.filter(func.lower(Module.module_name) == module_name.lower())
 
         all_modules = query.all()
         sorted_modules = sort_items(all_modules, sort_by, order)
@@ -43,14 +50,15 @@ async def list_modules(
             "data": {"modules": paginated["items"]},
             "meta": paginated["meta"],
         }
+
     except HTTPException as e:
         raise e
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Unexpected error occurred please try again")
+        raise HTTPException(status_code=500, detail="Unexpected error occurred, please try again.")
 
 
 @router.put("/v1/modules/{module_id}", response_model=SuccessResponse)
