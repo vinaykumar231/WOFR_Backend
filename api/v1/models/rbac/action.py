@@ -6,7 +6,7 @@ from api.v1.schemas.rbac_schemas import StatusEnum
 class Action(Base):
     __tablename__ = "actions"
 
-    action_id = Column(Integer, primary_key=True)
+    action_id = Column(Integer, primary_key=True,  autoincrement=True)
     action_name = Column(String(255), nullable=False)
     description = Column(Text)
     status = Column(String(255))

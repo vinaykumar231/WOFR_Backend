@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 from enum import Enum
@@ -87,7 +87,6 @@ class RoleModuleAssignment(BaseModel):
 class RoleModuleAssignments(BaseModel):
     module_id: int
     assignments: List[RoleModuleAssignment]
-    assigned_by: str
 
 class RoleModuleAssignmentUpdate(BaseModel):
     role_id: Optional[int] = None
@@ -126,6 +125,13 @@ class RoleModuleActionResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+#------------------------------------------ User Role Assigned ----------------------------------------------------
+class UserRoleAssignmentCreate(BaseModel):
+    user_id: str = Field(..., max_length=10, description="ID of the user to assign")
+    tenant_id: str = Field(..., description="Tenant under which assignment is made")
+    module_id: int = Field(..., description="Module ID whose actions/roles are to be assigned to the user")
+    assigned_by: int = Field(..., description="Admin/User ID who is assigning")
 
 #-------------------------------------------------------------------------------------------------------------
 

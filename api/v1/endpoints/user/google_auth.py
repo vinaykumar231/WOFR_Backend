@@ -63,7 +63,7 @@ async def google_login():
         logger.error(f"Error initiating Google OAuth flow: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to initiate Google login: {str(e)}")
 
-@router.get("/v1/auth/google/callback")
+@router.get("/auth/v1/google/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     try:
         code = request.query_params.get("code")

@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from api.v1.schemas.user_schemas import ForgotPassword, LoginUser, OTPVerify, OTPVerifyPreRegister, StatusEnum, UserType
+from auth.auth_bearer import JWTBearer, get_master_admin
 from core.config import read_config
 from core.phone_config import send_otp_sms
 from utils.validators import generate_next_user_id, validate_email, validate_password_strength, validate_phone_number, validate_username
@@ -85,10 +86,10 @@ async def pre_register(email: str, db: Session = Depends(get_db)):
         raise e
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.{e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error occurred.")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred, please try again.{e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred, please try again.")
 
 @router.post("/auth/v1/pre-register/verify-otp", status_code=status.HTTP_200_OK)
 async def verify_otp(data:OTPVerifyPreRegister, db: Session = Depends(get_db)):
@@ -358,6 +359,7 @@ def verify_otp(data: OTPVerify, db: Session = Depends(get_db)):
             "token": token,
             "email": user_db.email,
             "username": user_db.username,
+            "user_type":user_db.user_type
         }
 
     except HTTPException as e:
@@ -435,8 +437,11 @@ async def reset_password(data: ForgotPassword, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred. Please try again.")
     
     
-@router.get("/users/v1/all-users", status_code=status.HTTP_200_OK)
-def get_all_users(db: Session = Depends(get_db)):
+@router.get("/users/v1/all-users", status_code=status.HTTP_200_OK, 
+description=" Master Admin Login required", 
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
+async def get_all_users(db: Session = Depends(get_db)):
     
     try:
         users = db.query(User).all()
@@ -466,32 +471,19 @@ def get_all_users(db: Session = Depends(get_db)):
 
     
 # @router.put("/v1/update_user/{user_id}", response_model=None)
-# def update_user(user_id: str, user: UpdateUser, db: Session = Depends(get_db)):
+# def update_user(user_id: str, db: Session = Depends(get_db)):
 #     try:
 #         db_user = db.query(User).filter(User.user_id == user_id).first()
         
 #         if not db_user:
-#             raise HTTPException(status_code=404, detail="User not found")
-
-#         if user.user_name:
-#             db_user.username = user.user_name
-#         if user.user_email:
-#             db_user.email = user.user_email
-#         if user.phone:
-#             db_user.phone_number = user.phone
-#         if user.organization_name:
-#             db_user.organization_name = user.organization_name
-#         if user.user_password:
-#             db_user.password_hash = bcrypt.hashpw(user.user_password.encode(), bcrypt.gensalt()).decode()
-#         if user.status:
-#             db_user.status = user.status
-#         if user.user_type:
-#             db_user.user_type = user.user_type
+#             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+       
+#         db_user.user_type = "master_admin"
 
 #         db.commit()
 #         db.refresh(db_user)
         
-#         return {"message": "user updated successfully","user":db_user }
+#         return {"message": "user updated successfully","updated_user_type":db_user.user_type }
 #     except HTTPException as e:
 #         raise e
 #     except SQLAlchemyError:

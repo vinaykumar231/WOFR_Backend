@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Literal
 from api.v1.models.rbac.action import Action
 from api.v1.schemas.rbac_schemas import ActionOut, StatusUpdate, SuccessResponse, StatusEnum, ActionUpdate
+from auth.auth_bearer import JWTBearer, get_master_admin
 from db.session import get_db
 from utils.helper_function import paginate, sort_items, SortOrder
 from datetime import datetime
@@ -11,13 +12,16 @@ from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter()
 
-@router.get("/v1/actions", response_model=SuccessResponse)
+@router.get("/v1/actions", response_model=SuccessResponse, 
+description=" Master Admin Login required", 
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def list_actions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
     action_name: Optional[str] = Query(None),
-    sort_by: Literal["action_id", "action_name"] = "action_name",
+    sort_by: Literal["action_id", "action_name"] = "action_id",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db),
 ):
@@ -51,7 +55,10 @@ async def list_actions(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred please try again.")
     
-@router.put("/v1/actions/{action_id}", response_model=SuccessResponse)
+@router.put("/v1/actions/{action_id}", response_model=SuccessResponse, 
+description=" Master Admin Login required", 
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_action(
     action_id: int = Path(..., ge=1),
     action_data: ActionUpdate = Depends(),
@@ -86,7 +93,10 @@ async def update_action(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
     
 
-@router.patch("/v1/actions/{action_id}", response_model=SuccessResponse)
+@router.patch("/v1/actions/{action_id}", response_model=SuccessResponse, 
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_action_status(
     action_id: int = Path(..., ge=1),
     status_update: StatusUpdate = Body(...),

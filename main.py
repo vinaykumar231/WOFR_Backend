@@ -46,13 +46,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(setting_router, prefix="/api", tags=["Settings"])
 app.include_router(user_router, prefix="/api", tags=["User Auth"])
-app.include_router(google_router, tags=["Google Auth"])
+app.include_router(google_router, prefix="/api", tags=["Google Auth"])
+app.include_router(tenant_router, prefix="/api", tags=["tenant management"])
 app.include_router(module_router, prefix="/api", tags=["Module management"])
 app.include_router(action_router, prefix="/api", tags=["Actions management"])
 app.include_router(role_router, prefix="/api", tags=["Roles management"])
 app.include_router(role_module_action_mapping_router, prefix="/api", tags=["Role module action mapping management"])
 app.include_router(user_role_assignment_router, prefix="/api", tags=["User role assignment management"])
-app.include_router(tenant_router, prefix="/api", tags=["tenant management"])
 
 if __name__ == "__main__":
     import uvicorn

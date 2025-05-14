@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from api.v1.schemas.rbac_schemas import ModuleOut, ModuleUpdate, StatusUpdate, SuccessResponse, StatusEnum
 from api.v1.models.rbac.module import Module
-from auth.auth_bearer import get_master_admin  # optional if using auth
+from auth.auth_bearer import JWTBearer, get_master_admin  # optional if using auth
 from db.session import get_db
 from utils.helper_function import SortOrder, filter_items, paginate, sort_items
 from fastapi import HTTPException, Path, Body
@@ -17,13 +17,16 @@ from sqlalchemy.exc import SQLAlchemyError
 router = APIRouter()
 load_dotenv()
 
-@router.get("/v1/modules", response_model=SuccessResponse)
+@router.get("/v1/modules", response_model=SuccessResponse,  
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def list_modules(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
     module_name: Optional[str] = Query(None),
-    sort_by: Literal["module_id", "module_name"] = "module_name",
+    sort_by: Literal["module_id", "module_name"] = "module_id",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db)
 ):
@@ -34,13 +37,11 @@ async def list_modules(
             query = query.filter(Module.status == status_filter)
 
         if module_name:
-            # Case-insensitive match using lower() from both sides
             query = query.filter(func.lower(Module.module_name) == module_name.lower())
 
         all_modules = query.all()
         sorted_modules = sort_items(all_modules, sort_by, order)
 
-        # Convert to Pydantic models
         modules_out = [ModuleOut.from_orm(module) for module in sorted_modules]
 
         paginated = paginate(modules_out, page, limit)
@@ -61,7 +62,10 @@ async def list_modules(
         raise HTTPException(status_code=500, detail="Unexpected error occurred, please try again.")
 
 
-@router.put("/v1/modules/{module_id}", response_model=SuccessResponse)
+@router.put("/v1/modules/{module_id}", response_model=SuccessResponse, 
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_module(
     module_id: int = Path(..., ge=1),
     module_update: ModuleUpdate = Body(...),
@@ -96,7 +100,10 @@ async def update_module(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
 
 
-@router.patch("/modules/{module_id}")
+@router.patch("/modules/{module_id}",  
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_module_status(
     module_id: int = Path(..., title="Module ID"),
     status_update: StatusUpdate = Body(...),  

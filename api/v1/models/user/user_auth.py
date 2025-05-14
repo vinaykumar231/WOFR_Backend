@@ -24,7 +24,7 @@ class User(Base):
     social_auths = relationship("SocialAuth", back_populates="user")
     user_role_assignment = relationship("UserRoleAssignment", back_populates="user")
     tenant = relationship("Tenant", back_populates="user", uselist=False)
-    role_module_action_mappings = relationship("RoleModuleActionMapping", back_populates="user")
+    #role_module_action_mappings = relationship("RoleModuleActionMapping", back_populates="user")
 
 class OTP(Base):
     __tablename__ = 'otp'

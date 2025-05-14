@@ -10,6 +10,7 @@ from api.v1.models.rbac.role import Role
 from api.v1.models.rbac.role_module_action_mapping import RoleModuleActionMapping
 from api.v1.schemas.rbac_schemas import RoleModuleActionResponse, RoleModuleAssignments, RoleModuleAssignmentsUpdate, RoleModuleStatusUpdate, StatusEnum
 from sqlalchemy.orm import Session, joinedload
+from auth.auth_bearer import JWTBearer, get_master_admin
 from db.session import get_db
 from utils.helper_function import SortOrder, paginate, sort_items
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,77 +18,78 @@ from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter()
 
-@router.post("/v1/mapping-module-actions-roles")
-def assign_module_actions_bulk(
-    request: RoleModuleAssignments,
-    db: Session = Depends(get_db)
-):
-    try:
-        new_ids = []
-        existing_mappings = []
+# @router.post("/v1/mapping-module-actions-roles")
+# def assign_module_actions_bulk(
+#     request: RoleModuleAssignments,
+#     db: Session = Depends(get_db)
+# ):
+#     try:
+#         new_ids = []
+#         existing_mappings = []
 
-        for assignment in request.assignments:
-            for action_id in assignment.action_ids:
-                action_exists = db.query(Action).filter(Action.action_id == action_id).first()
-                if not action_exists:
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Action ID {action_id} does not exist.")
-        try:
-            for assignment in request.assignments:
-                for role_id in assignment.role_id:  
-                    for action_id in assignment.action_ids:
-                        existing = db.query(RoleModuleActionMapping).filter_by(module_id=request.module_id,role_id=role_id,action_id=action_id).first()
+#         for assignment in request.assignments:
+#             for action_id in assignment.action_ids:
+#                 action_exists = db.query(Action).filter(Action.action_id == action_id).first()
+#                 if not action_exists:
+#                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Action ID {action_id} does not exist.")
+#         try:
+#             for assignment in request.assignments:
+#                 for role_id in assignment.role_id:  
+#                     for action_id in assignment.action_ids:
+#                         existing = db.query(RoleModuleActionMapping).filter_by(module_id=request.module_id,role_id=role_id,action_id=action_id).first()
 
-                        if existing:
-                            existing_mappings.append({
-                                "role_id": role_id,
-                                "action_id": action_id
-                            })
-                        else:
-                            mapping = RoleModuleActionMapping(
-                                module_id=request.module_id,
-                                role_id=role_id,
-                                action_id=action_id,
-                                assigned_by=request.assigned_by,
-                                status=assignment.status,
-                                assignment_date=datetime.utcnow()
-                            )
-                            db.add(mapping)
-                            db.flush()
-                            new_ids.append(mapping.role_module_action_mapping_id)
+#                         if existing:
+#                             existing_mappings.append({
+#                                 "role_id": role_id,
+#                                 "action_id": action_id
+#                             })
+#                         else:
+#                             mapping = RoleModuleActionMapping(
+#                                 module_id=request.module_id,
+#                                 role_id=role_id,
+#                                 action_id=action_id,
+#                                 status=assignment.status,
+#                                 mapping_date=datetime.utcnow()
+#                             )
+#                             db.add(mapping)
+#                             db.flush()
+#                             new_ids.append(mapping.role_module_action_mapping_id)
 
-            db.commit()
+#             db.commit()
 
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Assignment failed: {str(e)}")
+#         except Exception as e:
+#             db.rollback()
+#             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Assignment failed: {str(e)}")
 
-        action_ids = sorted(set(aid for r in request.assignments for aid in r.action_ids))
-        role_ids = sorted(set(rid for r in request.assignments for rid in r.role_id))
+#         action_ids = sorted(set(aid for r in request.assignments for aid in r.action_ids))
+#         role_ids = sorted(set(rid for r in request.assignments for rid in r.role_id))
 
-        return {
-            "message": "Role-Module-Action mappings assigned successfully.",
-            "data": {
-                "role_module_action_mapping_ids": new_ids,
-                "module_id": request.module_id,
-                "action_ids": action_ids,
-                "role_ids": role_ids,
-                "assigned_by": request.assigned_by,
-                "assignment_date": datetime.utcnow(),
-                "existing_mappings": existing_mappings
-            }
-        }
-    except HTTPException as e:
-        raise e
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
+#         return {
+#             "message": "Role-Module-Action mapped successfully.",
+#             "data": {
+#                 "role_module_action_mapping_ids": new_ids,
+#                 "module_id": request.module_id,
+#                 "action_ids": action_ids,
+#                 "role_ids": role_ids,
+#                 "assignment_date": datetime.utcnow(),
+#                 "existing_mappings": existing_mappings
+#             }
+#         }
+#     except HTTPException as e:
+#         raise e
+#     except SQLAlchemyError:
+#         db.rollback()
+#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
+#     except Exception:
+#         db.rollback()
+#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
     
 
-@router.get("/v1/mapped-module-actions-roles", response_model=Dict[str, Any])
-def get_role_module_action_mappings(
+@router.get("/v1/mapped-module-actions-roles", response_model=Dict[str, Any],  
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
+async def get_role_module_action_mappings(
     db: Session = Depends(get_db),
     page: int = Query(1, alias="page", ge=1),
     limit: int = Query(10, alias="limit", ge=1, le=100),
@@ -99,7 +101,7 @@ def get_role_module_action_mappings(
 ):
     try:
         query = db.query(RoleModuleActionMapping).options(
-            joinedload(RoleModuleActionMapping.user),
+            #joinedload(RoleModuleActionMapping.user),
             joinedload(RoleModuleActionMapping.module),
             joinedload(RoleModuleActionMapping.action),
             joinedload(RoleModuleActionMapping.role)
@@ -113,7 +115,7 @@ def get_role_module_action_mappings(
             query = query.join(RoleModuleActionMapping.role).filter(func.lower(Role.role_name) == role_name.lower())
 
         sort_columns = {
-            "assignment_date": RoleModuleActionMapping.assignment_date,
+            "assignment_date": RoleModuleActionMapping.mapping_date,
             "module_name": Module.module_name,
             "action_name": Action.action_name,
             "role_name": Role.role_name
@@ -147,9 +149,8 @@ def get_role_module_action_mappings(
                 "action_name": item.action.action_name if item.action else None,
                 "role_id": item.role_id,
                 "role_name": item.role.role_name if item.role else None,
-                "mapper_id": item.assigned_by,
-                "mapper_name": item.user.username if item.user else None,
-                "assignment_date": item.assignment_date
+                "status": item.status if item.status else None,
+                "assignment_date": item.mapping_date
             })
 
         return {
@@ -168,8 +169,11 @@ def get_role_module_action_mappings(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
 
 
-@router.put("/v1//update-module-actions-roles")
-def update_module_actions_bulk(
+@router.put("/v1//update-module-actions-roles",  
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
+async def update_module_actions_bulk(
     role_module_action_mapping_id: int,  
     request: RoleModuleAssignmentsUpdate,
     db: Session = Depends(get_db)
@@ -195,8 +199,6 @@ def update_module_actions_bulk(
                         existing_mapping.role_id = assignment.role_id
                     if assignment.action_ids:
                         existing_mapping.action_id = assignment.action_ids[0]  
-                    if assignment.assigned_by:
-                        existing_mapping.assigned_by = assignment.assigned_by
                     if assignment.status:
                         existing_mapping.status = assignment.status
                     existing_mapping.updated_at = datetime.utcnow()
@@ -208,7 +210,6 @@ def update_module_actions_bulk(
                         "role_id": existing_mapping.role_id,
                         "action_id": existing_mapping.action_id,
                         "status": existing_mapping.status,
-                        "assigned_by": existing_mapping.assigned_by,
                         "updated_at": existing_mapping.updated_at
                     })
                 else:
@@ -231,8 +232,11 @@ def update_module_actions_bulk(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
     
 
-@router.patch("/v1/update-role-module-action-status")
-def update_status_for_mappings(
+@router.patch("/v1/update-role-module-action-status", 
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
+async def update_status_for_mappings(
     request: RoleModuleStatusUpdate,
     db: Session = Depends(get_db)
 ):

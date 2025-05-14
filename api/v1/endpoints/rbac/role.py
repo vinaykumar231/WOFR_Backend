@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Literal
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
+from auth.auth_bearer import JWTBearer, get_master_admin
 from db.session import get_db
 from api.v1.models.rbac.role import Role
 from api.v1.schemas.rbac_schemas import RoleCreate, RoleOut, RoleUpdate, StatusUpdate, SuccessResponse, StatusEnum
@@ -12,13 +13,16 @@ from utils.helper_function import SortOrder, filter_items, paginate, sort_items
 router = APIRouter()
 
 
-@router.get("/v1/roles", response_model=SuccessResponse)
+@router.get("/v1/roles", response_model=SuccessResponse, 
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def list_roles(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[StatusEnum] = Query(None),
     role_name: Optional[str] = Query(None),
-    sort_by: Literal["role_id", "role_name"] = "role_name",
+    sort_by: Literal["role_id", "role_name"] = "role_id",
     order: SortOrder = SortOrder.ASC,
     db: Session = Depends(get_db)
 ):
@@ -51,13 +55,15 @@ async def list_roles(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred please try again")
     
-@router.post("/v1/roles", response_model=SuccessResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/v1/roles", response_model=SuccessResponse, status_code=status.HTTP_201_CREATED,  
+description=" Master Admin Login required",
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def create_role(
     role_create: RoleCreate = Body(...),
     db: Session = Depends(get_db)
 ):
     try:
-        # Check if role name already exists
         existing_role = db.query(Role).filter(Role.role_name == role_create.role_name).first()
         if existing_role:
             raise HTTPException(status_code=400, detail="Role with this name already exists.")
@@ -91,7 +97,10 @@ async def create_role(
 
 
 
-@router.put("/v1/roles/{role_id}", response_model=SuccessResponse)
+@router.put("/v1/roles/{role_id}", response_model=SuccessResponse, 
+description=" Master Admin Login required", 
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_role(
     role_id: int = Path(..., ge=1),
     role_update: RoleUpdate = Body(...),
@@ -102,7 +111,6 @@ async def update_role(
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
 
-        # Update fields if provided
         if role_update.role_name:
             role.role_name = role_update.role_name
         if role_update.description:
@@ -132,7 +140,10 @@ async def update_role(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error occurred please try again")
 
 
-@router.patch("/v1/roles/{role_id}", response_model=SuccessResponse)
+@router.patch("/v1/roles/{role_id}", response_model=SuccessResponse,  
+description=" Master Admin Login required", 
+dependencies=[Depends(JWTBearer()), Depends(get_master_admin)]
+)
 async def update_role_status(
     role_id: int = Path(...),
     status_update: StatusUpdate = Body(...),

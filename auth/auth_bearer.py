@@ -124,6 +124,15 @@ def get_master_admin_super_admin_or_admin__employee(user_id: int = Depends(get_u
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to perform this action")
     return user
 
+def login_required(user_id: int = Depends(get_user_id_from_token), db: Session = Depends(get_db)) -> Optional[User]:
+   
+    user = db.query(User).filter(User.user_id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return user
+
 def get_current_user(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)) -> Optional[User]:
     try:
         payload = decodeJWT(token)

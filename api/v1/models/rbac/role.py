@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 
 class Role(Base):
     __tablename__ = "roles"
-    role_id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, primary_key=True,  autoincrement=True)
     role_name = Column(String(255), nullable=False)
     description = Column(Text)
     status = Column(String(255))

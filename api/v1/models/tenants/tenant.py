@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 class Tenant(Base):
     __tablename__ = "tenants"
 
-    tenant_id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(10), primary_key=True, unique=True, index=True, nullable=False)
     user_id = Column(String(10), ForeignKey("user.user_id"))
     name = Column(String(255), nullable=False)
     organization_type = Column(String(100), nullable=False)
