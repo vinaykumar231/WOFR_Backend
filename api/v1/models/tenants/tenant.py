@@ -20,3 +20,5 @@ class Tenant(Base):
 
     user = relationship("User", back_populates="tenant")
     user_role_assignment = relationship("UserRoleAssignment", back_populates="tenant")
+    tenant_user = relationship("TenantUser", back_populates="tenant")
+    tenant_user_role_mappings = relationship("TenantUserRoleAssign", back_populates="tenant")

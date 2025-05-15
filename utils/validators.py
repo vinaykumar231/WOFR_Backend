@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from sqlalchemy.orm import Session
 from api.v1.models.tenants.tenant import Tenant
+from api.v1.models.tenants.tenant_user import TenantUser
 from api.v1.models.user.user_auth import User
 from core.config import read_config
 
@@ -118,6 +119,21 @@ def generate_next_tenant_id(db: Session) -> str:
         last_num = 0
     next_id = last_num + 1
     return f"T{str(next_id).zfill(5)}"  
+
+#------------------------------------------------- Tenant_user_id format -------------------------------------------------
+
+def generate_next_tenant_user_id(db: Session) -> str:
+    last_user = (
+        db.query(TenantUser)
+        .filter(TenantUser.tenant_user_id.like("EMP%"))
+        .order_by(TenantUser.tenant_user_id.desc())
+        .first()
+    )
+    if not last_user:
+        return "EMP0001"
+    last_id = int(last_user.tenant_user_id.replace("EMP", ""))
+    return f"EMP{last_id + 1:04d}"
+
 
 #------------------------------------------------- validate date format -------------------------------------------------
 

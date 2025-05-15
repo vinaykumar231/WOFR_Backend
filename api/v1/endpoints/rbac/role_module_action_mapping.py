@@ -18,71 +18,71 @@ from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter()
 
-# @router.post("/v1/mapping-module-actions-roles")
-# def assign_module_actions_bulk(
-#     request: RoleModuleAssignments,
-#     db: Session = Depends(get_db)
-# ):
-#     try:
-#         new_ids = []
-#         existing_mappings = []
+@router.post("/v1/mapping-module-actions-roles")
+def assign_module_actions_bulk(
+    request: RoleModuleAssignments,
+    db: Session = Depends(get_db)
+):
+    try:
+        new_ids = []
+        existing_mappings = []
 
-#         for assignment in request.assignments:
-#             for action_id in assignment.action_ids:
-#                 action_exists = db.query(Action).filter(Action.action_id == action_id).first()
-#                 if not action_exists:
-#                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Action ID {action_id} does not exist.")
-#         try:
-#             for assignment in request.assignments:
-#                 for role_id in assignment.role_id:  
-#                     for action_id in assignment.action_ids:
-#                         existing = db.query(RoleModuleActionMapping).filter_by(module_id=request.module_id,role_id=role_id,action_id=action_id).first()
+        for assignment in request.assignments:
+            for action_id in assignment.action_ids:
+                action_exists = db.query(Action).filter(Action.action_id == action_id).first()
+                if not action_exists:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Action ID {action_id} does not exist.")
+        try:
+            for assignment in request.assignments:
+                for role_id in assignment.role_id:  
+                    for action_id in assignment.action_ids:
+                        existing = db.query(RoleModuleActionMapping).filter_by(module_id=request.module_id,role_id=role_id,action_id=action_id).first()
 
-#                         if existing:
-#                             existing_mappings.append({
-#                                 "role_id": role_id,
-#                                 "action_id": action_id
-#                             })
-#                         else:
-#                             mapping = RoleModuleActionMapping(
-#                                 module_id=request.module_id,
-#                                 role_id=role_id,
-#                                 action_id=action_id,
-#                                 status=assignment.status,
-#                                 mapping_date=datetime.utcnow()
-#                             )
-#                             db.add(mapping)
-#                             db.flush()
-#                             new_ids.append(mapping.role_module_action_mapping_id)
+                        if existing:
+                            existing_mappings.append({
+                                "role_id": role_id,
+                                "action_id": action_id
+                            })
+                        else:
+                            mapping = RoleModuleActionMapping(
+                                module_id=request.module_id,
+                                role_id=role_id,
+                                action_id=action_id,
+                                status=assignment.status,
+                                mapping_date=datetime.utcnow()
+                            )
+                            db.add(mapping)
+                            db.flush()
+                            new_ids.append(mapping.role_module_action_mapping_id)
 
-#             db.commit()
+            db.commit()
 
-#         except Exception as e:
-#             db.rollback()
-#             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Assignment failed: {str(e)}")
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Assignment failed: {str(e)}")
 
-#         action_ids = sorted(set(aid for r in request.assignments for aid in r.action_ids))
-#         role_ids = sorted(set(rid for r in request.assignments for rid in r.role_id))
+        action_ids = sorted(set(aid for r in request.assignments for aid in r.action_ids))
+        role_ids = sorted(set(rid for r in request.assignments for rid in r.role_id))
 
-#         return {
-#             "message": "Role-Module-Action mapped successfully.",
-#             "data": {
-#                 "role_module_action_mapping_ids": new_ids,
-#                 "module_id": request.module_id,
-#                 "action_ids": action_ids,
-#                 "role_ids": role_ids,
-#                 "assignment_date": datetime.utcnow(),
-#                 "existing_mappings": existing_mappings
-#             }
-#         }
-#     except HTTPException as e:
-#         raise e
-#     except SQLAlchemyError:
-#         db.rollback()
-#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
-#     except Exception:
-#         db.rollback()
-#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
+        return {
+            "message": "Role-Module-Action mapped successfully.",
+            "data": {
+                "role_module_action_mapping_ids": new_ids,
+                "module_id": request.module_id,
+                "action_ids": action_ids,
+                "role_ids": role_ids,
+                "assignment_date": datetime.utcnow(),
+                "existing_mappings": existing_mappings
+            }
+        }
+    except HTTPException as e:
+        raise e
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error occurred.")
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred, please try again.")
     
 
 @router.get("/v1/mapped-module-actions-roles", response_model=Dict[str, Any],  

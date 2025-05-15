@@ -19,3 +19,5 @@ class RoleModuleActionMapping(Base):
     action = relationship("Action", back_populates="role_module_action_mappings")
     #user = relationship("User", back_populates="role_module_action_mappings")
     user_role_assignment = relationship("UserRoleAssignment", back_populates="role_module_action_mappings")
+
+    tenant_user_role_mappings = relationship("TenantUserRoleAssign", back_populates="role_module_action_mapping")

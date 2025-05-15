@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 router = APIRouter()
 
 
-@router.post("/v1/tenant", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/v1/tenant", response_model=None, status_code=status.HTTP_201_CREATED)
 def create_tenant(request: TenantCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         user = db.query(User).filter(User.user_id == current_user.user_id).first()
